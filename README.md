@@ -12,9 +12,10 @@ Monorepo triển khai hệ thống bán đồ ăn online theo mô hình gồm Po
 ## Chức năng chính
 
 - Đăng ký / đăng nhập người dùng.
-- Quản lý nhà hàng và món ăn.
+- Quản lý nhà hàng và món ăn theo danh mục.
 - Tìm kiếm nhà hàng, xem menu.
 - Tạo đơn hàng nhiều món.
+- Mock xác nhận thanh toán thành công cho đơn demo.
 - Theo dõi trạng thái đơn hàng.
 
 ## Chạy Database và pgAdmin bằng Docker
@@ -82,7 +83,16 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api
 Khi `DB_SYNCHRONIZE=true`, API sẽ tự tạo dữ liệu demo qua `SeedService`.
 
 - Admin: `admin@food.local` / `Admin@123456`
+- Chủ quán: `owner@food.local` / `Owner@123456`
 - Customer: `customer@food.local` / `Customer@123456`
+- Customer 2: `customer2@food.local` / `Customer@123456`
+
+Dữ liệu demo bao phủ luồng thực tế từ danh mục món ăn đến đặt hàng và thanh toán:
+
+- 3 nhà hàng mẫu: Bếp Nhà Online, Phở & Bún Huế An Nhiên, Healthy Box Saigon.
+- 10 món ăn thuộc các danh mục `Cơm phần`, `Ăn vặt`, `Đồ uống`, `Món nước`, `Topping`, `Healthy`.
+- 3 đơn hàng mẫu ở các trạng thái `COMPLETED`, `CONFIRMED`, `PREPARING`.
+- Các đơn hàng đều có địa chỉ giao, số điện thoại, ghi chú, phương thức thanh toán và `paymentStatus=PAID` kèm mã giao dịch mock.
 
 ## Ghi chú SOLID / Clean Code
 

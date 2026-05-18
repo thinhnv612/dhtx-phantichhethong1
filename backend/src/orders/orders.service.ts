@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { OrderStatus, PaymentMethod, PaymentStatus } from '../common/enums';
 import { MenuItemsService } from '../menu-items/menu-items.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto';
 import { OrderItem } from './order-item.entity';
@@ -21,7 +22,7 @@ export class OrdersService {
       total += unitPrice * requestItem.quantity;
       orderItems.push(Object.assign(new OrderItem(), { menuItemId: menuItem.id, quantity: requestItem.quantity, unitPrice: unitPrice.toFixed(2) }));
     }
-    return this.orders.save(this.orders.create({ customerId, restaurantId: dto.restaurantId, deliveryAddress: dto.deliveryAddress, note: dto.note, totalAmount: total.toFixed(2), items: orderItems }));
+    return this.orders.save(this.orders.create({ customerId, restaurantId: dto.restaurantId, status: OrderStatus.CONFIRMED, deliveryAddress: dto.deliveryAddress, customerPhone: dto.customerPhone, note: dto.note, totalAmount: total.toFixed(2), paymentMethod: dto.paymentMethod ?? PaymentMethod.MOMO, paymentStatus: PaymentStatus.PAID, paidAt: new Date(), paymentTransactionId: `PAY-${Date.now()}`, items: orderItems }));
   }
   async updateStatus(id: string, dto: UpdateOrderStatusDto) { const order = await this.orders.findOne({ where: { id } }); if (!order) throw new NotFoundException('Order not found'); order.status = dto.status; return this.orders.save(order); }
 }
