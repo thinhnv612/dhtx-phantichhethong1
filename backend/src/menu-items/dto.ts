@@ -2,6 +2,7 @@ import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'clas
 export class CreateMenuItemDto {
   @IsString() @IsNotEmpty() name: string;
   @IsString() description: string;
+  @IsOptional() @IsString() category?: string;
   @IsNumber() @Min(0) price: number;
   @IsString() restaurantId: string;
   @IsOptional() @IsString() imageUrl?: string;
@@ -9,6 +10,7 @@ export class CreateMenuItemDto {
 export class UpdateMenuItemDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsString() category?: string;
   @IsOptional() @IsNumber() @Min(0) price?: number;
   @IsOptional() @IsString() imageUrl?: string;
   @IsOptional() @IsBoolean() isAvailable?: boolean;

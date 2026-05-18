@@ -6,6 +6,7 @@ export class MenuItem {
   @PrimaryGeneratedColumn('uuid') id: string;
   @Column() name: string;
   @Column('text') description: string;
+  @Column({ default: 'Món chính' }) category: string;
   @Column({ type: 'numeric', precision: 12, scale: 2 }) price: string;
   @Column({ nullable: true }) imageUrl?: string;
   @Column({ default: true }) isAvailable: boolean;
