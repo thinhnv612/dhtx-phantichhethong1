@@ -6,6 +6,7 @@ export class CreateVoucherDto {
   @Type(() => Number) @IsNumber() @Min(0) discountAmount: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsDateString() expiresAt?: string;
+  @IsOptional() @IsString() restaurantId?: string;
 }
 
 export class UpdateVoucherDto {
@@ -13,4 +14,5 @@ export class UpdateVoucherDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) discountAmount?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsDateString() expiresAt?: string;
+  @IsOptional() @IsString() restaurantId?: string;
 }

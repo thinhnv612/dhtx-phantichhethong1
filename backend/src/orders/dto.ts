@@ -8,6 +8,7 @@ export class CreateOrderDto {
   @IsOptional() @IsString() customerPhone?: string;
   @IsOptional() @IsString() note?: string;
   @IsOptional() @IsEnum(PaymentMethod) paymentMethod?: PaymentMethod;
+  @IsOptional() @IsString() voucherCode?: string;
   @IsArray() @ValidateNested({ each: true }) @Type(() => CreateOrderItemDto) items: CreateOrderItemDto[];
 }
 export class UpdateOrderStatusDto { @IsEnum(OrderStatus) status: OrderStatus; }
