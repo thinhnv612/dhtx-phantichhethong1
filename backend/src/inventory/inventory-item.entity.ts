@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn, VersionColumn } from 'typeorm';
 import { Restaurant } from '../restaurants/restaurant.entity';
 
 @Entity('inventory_items')
@@ -13,4 +13,5 @@ export class InventoryItem {
   @Column({ nullable: true }) restaurantId?: string;
   @CreateDateColumn() createdAt: Date;
   @UpdateDateColumn() updatedAt: Date;
+  @VersionColumn() version: number;
 }

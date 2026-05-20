@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { InventoryItem } from '../inventory/inventory-item.entity';
 import { MenuItemIngredient } from '../menu-items/menu-item-ingredient.entity';
 import { OrderStatus, PaymentMethod, PaymentStatus } from '../common/enums';
@@ -25,7 +25,7 @@ export class OrdersService {
     @InjectRepository(Order) private readonly orders: Repository<Order>,
     @InjectRepository(Voucher) private readonly vouchers: Repository<Voucher>,
     @InjectRepository(MenuItemIngredient) private readonly ingredients: Repository<MenuItemIngredient>,
-    @InjectRepository(InventoryItem) private readonly inventory: Repository<InventoryItem>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly menuItems: MenuItemsService,
   ) {}
 
@@ -35,6 +35,7 @@ export class OrdersService {
   async create(customerId: string, dto: CreateOrderDto) {
     if (dto.items.length === 0) throw new BadRequestException('Order must contain at least one item');
     const orderItems: OrderItem[] = [];
+    const consumptionMap = new Map<string, number>();
     let total = 0;
 
     for (const requestItem of dto.items) {
@@ -44,14 +45,10 @@ export class OrdersService {
       total += unitPrice * requestItem.quantity;
       orderItems.push(Object.assign(new OrderItem(), { menuItemId: menuItem.id, quantity: requestItem.quantity, unitPrice: unitPrice.toFixed(2) }));
 
-      const recipe = await this.ingredients.find({ where: { menuItemId: menuItem.id }, relations: { inventoryItem: true } });
+      const recipe = await this.ingredients.find({ where: { menuItemId: menuItem.id } });
       for (const material of recipe) {
-        const stock = await this.inventory.findOne({ where: { id: material.inventoryItemId } });
-        if (!stock) throw new BadRequestException(`Missing inventory material: ${material.inventoryItemId}`);
         const consume = Number(material.quantityPerUnit) * requestItem.quantity;
-        if (stock.quantity < consume) throw new BadRequestException(`Insufficient stock for ${stock.name}`);
-        stock.quantity = Number((stock.quantity - consume).toFixed(3));
-        await this.inventory.save(stock);
+        consumptionMap.set(material.inventoryItemId, (consumptionMap.get(material.inventoryItemId) ?? 0) + consume);
       }
     }
 
@@ -64,7 +61,22 @@ export class OrdersService {
       total = Math.max(0, total - Number(voucher.discountAmount));
     }
 
-    return this.orders.save(this.orders.create({ customerId, restaurantId: dto.restaurantId, voucherId: voucher?.id, status: OrderStatus.CONFIRMED, deliveryAddress: dto.deliveryAddress, customerPhone: dto.customerPhone, note: dto.note, totalAmount: total.toFixed(2), paymentMethod: dto.paymentMethod ?? PaymentMethod.MOMO, paymentStatus: PaymentStatus.PAID, paidAt: new Date(), paymentTransactionId: `PAY-${Date.now()}`, items: orderItems }));
+    return this.dataSource.transaction(async manager => {
+      for (const [inventoryItemId, consume] of consumptionMap.entries()) {
+        const stock = await manager.findOne(InventoryItem, { where: { id: inventoryItemId } });
+        if (!stock) throw new BadRequestException(`Missing inventory material: ${inventoryItemId}`);
+        const result = await manager.createQueryBuilder()
+          .update(InventoryItem)
+          .set({ quantity: () => `quantity - ${consume}`, version: () => 'version + 1' })
+          .where('id = :id', { id: inventoryItemId })
+          .andWhere('version = :version', { version: stock.version })
+          .andWhere('quantity >= :consume', { consume })
+          .execute();
+        if (!result.affected) throw new ConflictException(`OUT_OF_STOCK:${stock.name}`);
+      }
+
+      return manager.save(Order, manager.create(Order, { customerId, restaurantId: dto.restaurantId, voucherId: voucher?.id, status: OrderStatus.CONFIRMED, deliveryAddress: dto.deliveryAddress, customerPhone: dto.customerPhone, note: dto.note, totalAmount: total.toFixed(2), paymentMethod: dto.paymentMethod ?? PaymentMethod.MOMO, paymentStatus: PaymentStatus.PAID, paidAt: new Date(), paymentTransactionId: `PAY-${Date.now()}`, items: orderItems }));
+    });
   }
 
   async updateStatus(id: string, dto: UpdateOrderStatusDto) {
