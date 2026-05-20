@@ -9,8 +9,19 @@ import { Order } from './order.entity';
 
 @Injectable()
 export class OrdersService {
-  constructor(@InjectRepository(Order) private readonly orders: Repository<Order>, private readonly menuItems: MenuItemsService) {}
-  findForCustomer(customerId: string) { return this.orders.find({ where: { customerId }, relations: { items: { menuItem: true }, restaurant: true }, order: { createdAt: 'DESC' } }); }
+  constructor(
+    @InjectRepository(Order) private readonly orders: Repository<Order>,
+    private readonly menuItems: MenuItemsService,
+  ) {}
+
+  findAll() {
+    return this.orders.find({ relations: { items: { menuItem: true }, restaurant: true, customer: true }, order: { createdAt: 'DESC' } });
+  }
+
+  findForCustomer(customerId: string) {
+    return this.orders.find({ where: { customerId }, relations: { items: { menuItem: true }, restaurant: true }, order: { createdAt: 'DESC' } });
+  }
+
   async create(customerId: string, dto: CreateOrderDto) {
     if (dto.items.length === 0) throw new BadRequestException('Order must contain at least one item');
     const orderItems: OrderItem[] = [];
@@ -22,7 +33,21 @@ export class OrdersService {
       total += unitPrice * requestItem.quantity;
       orderItems.push(Object.assign(new OrderItem(), { menuItemId: menuItem.id, quantity: requestItem.quantity, unitPrice: unitPrice.toFixed(2) }));
     }
+
     return this.orders.save(this.orders.create({ customerId, restaurantId: dto.restaurantId, status: OrderStatus.CONFIRMED, deliveryAddress: dto.deliveryAddress, customerPhone: dto.customerPhone, note: dto.note, totalAmount: total.toFixed(2), paymentMethod: dto.paymentMethod ?? PaymentMethod.MOMO, paymentStatus: PaymentStatus.PAID, paidAt: new Date(), paymentTransactionId: `PAY-${Date.now()}`, items: orderItems }));
   }
-  async updateStatus(id: string, dto: UpdateOrderStatusDto) { const order = await this.orders.findOne({ where: { id } }); if (!order) throw new NotFoundException('Order not found'); order.status = dto.status; return this.orders.save(order); }
+
+  async updateStatus(id: string, dto: UpdateOrderStatusDto) {
+    const order = await this.orders.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Order not found');
+    order.status = dto.status;
+    return this.orders.save(order);
+  }
+
+  async remove(id: string) {
+    const order = await this.orders.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Order not found');
+    await this.orders.delete(id);
+    return { deleted: true };
+  }
 }
