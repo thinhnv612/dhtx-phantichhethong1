@@ -8,6 +8,15 @@ import { CreateOrderDto, UpdateOrderStatusDto } from './dto';
 import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
 
+const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
+  [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+  [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
+  [OrderStatus.PREPARING]: [OrderStatus.DELIVERING, OrderStatus.CANCELLED],
+  [OrderStatus.DELIVERING]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  [OrderStatus.COMPLETED]: [],
+  [OrderStatus.CANCELLED]: [],
+};
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -51,6 +60,9 @@ export class OrdersService {
   async updateStatus(id: string, dto: UpdateOrderStatusDto) {
     const order = await this.orders.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== dto.status && !allowedTransitions[order.status].includes(dto.status)) {
+      throw new BadRequestException(`Invalid status transition from ${order.status} to ${dto.status}`);
+    }
     order.status = dto.status;
     return this.orders.save(order);
   }

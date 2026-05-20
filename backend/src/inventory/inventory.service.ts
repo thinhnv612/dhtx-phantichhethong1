@@ -7,9 +7,39 @@ import { InventoryItem } from './inventory-item.entity';
 @Injectable()
 export class InventoryService {
   constructor(@InjectRepository(InventoryItem) private readonly items: Repository<InventoryItem>) {}
-  findAll() { return this.items.find({ order: { createdAt: 'DESC' } }); }
-  async findOne(id: string) { const item = await this.items.findOne({ where: { id } }); if (!item) throw new NotFoundException('Inventory item not found'); return item; }
-  create(dto: CreateInventoryItemDto) { return this.items.save(this.items.create({ ...dto, unitCost: dto.unitCost.toFixed(2) })); }
-  async update(id: string, dto: UpdateInventoryItemDto) { const item = await this.findOne(id); Object.assign(item, dto.unitCost === undefined ? dto : { ...dto, unitCost: dto.unitCost.toFixed(2) }); return this.items.save(item); }
-  async remove(id: string) { await this.findOne(id); await this.items.delete(id); return { deleted: true }; }
+
+  private withStockStatus(item: InventoryItem) {
+    const stockStatus = item.quantity === 0 ? 'OUT_OF_STOCK' : item.quantity <= item.minStock ? 'LOW_STOCK' : 'IN_STOCK';
+    return { ...item, stockStatus };
+  }
+
+  async findAll() {
+    const items = await this.items.find({ order: { createdAt: 'DESC' } });
+    return items.map(item => this.withStockStatus(item));
+  }
+
+  async findOne(id: string) {
+    const item = await this.items.findOne({ where: { id } });
+    if (!item) throw new NotFoundException('Inventory item not found');
+    return this.withStockStatus(item);
+  }
+
+  create(dto: CreateInventoryItemDto) {
+    return this.items.save(this.items.create({ ...dto, unitCost: dto.unitCost.toFixed(2) })).then(item => this.withStockStatus(item));
+  }
+
+  async update(id: string, dto: UpdateInventoryItemDto) {
+    const current = await this.items.findOne({ where: { id } });
+    if (!current) throw new NotFoundException('Inventory item not found');
+    Object.assign(current, dto.unitCost === undefined ? dto : { ...dto, unitCost: dto.unitCost.toFixed(2) });
+    const item = await this.items.save(current);
+    return this.withStockStatus(item);
+  }
+
+  async remove(id: string) {
+    const item = await this.items.findOne({ where: { id } });
+    if (!item) throw new NotFoundException('Inventory item not found');
+    await this.items.delete(id);
+    return { deleted: true };
+  }
 }

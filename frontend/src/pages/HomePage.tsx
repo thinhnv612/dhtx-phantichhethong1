@@ -37,7 +37,7 @@ export function HomePage() {
 
   useEffect(() => {
     if (!isAdminSession) return;
-    const timer = setInterval(() => { api.allOrders().then(setOrders).catch(() => undefined); }, 5000);
+    const timer = setInterval(() => { api.allOrders().then(setOrders).catch(() => undefined); }, 3000);
     return () => clearInterval(timer);
   }, [isAdminSession]);
   const checkout = async () => { if (!selected || !cart.length) return; await api.order({ restaurantId: selected.id, deliveryAddress: address, customerPhone: phone, paymentMethod: 'MOMO', note: 'Thanh toán demo tự động thành công.', items: cart.map(i => ({ menuItemId: i.menuItem.id, quantity: i.quantity })) }); setCart([]); setOrders(await api.myOrders()); alert('Đặt hàng thành công. Thanh toán MoMo đã được xác nhận!'); };
