@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { InventoryItem } from '../inventory/inventory-item.entity';
+import { MenuItemIngredient } from '../menu-items/menu-item-ingredient.entity';
 import { OrderStatus, PaymentMethod, PaymentStatus } from '../common/enums';
 import { MenuItemsService } from '../menu-items/menu-items.service';
 import { Voucher } from '../vouchers/voucher.entity';
@@ -22,27 +24,35 @@ export class OrdersService {
   constructor(
     @InjectRepository(Order) private readonly orders: Repository<Order>,
     @InjectRepository(Voucher) private readonly vouchers: Repository<Voucher>,
+    @InjectRepository(MenuItemIngredient) private readonly ingredients: Repository<MenuItemIngredient>,
+    @InjectRepository(InventoryItem) private readonly inventory: Repository<InventoryItem>,
     private readonly menuItems: MenuItemsService,
   ) {}
 
-  findAll() {
-    return this.orders.find({ relations: { items: { menuItem: true }, restaurant: true, customer: true, voucher: true }, order: { createdAt: 'DESC' } });
-  }
-
-  findForCustomer(customerId: string) {
-    return this.orders.find({ where: { customerId }, relations: { items: { menuItem: true }, restaurant: true, voucher: true }, order: { createdAt: 'DESC' } });
-  }
+  findAll() { return this.orders.find({ relations: { items: { menuItem: true }, restaurant: true, customer: true, voucher: true }, order: { createdAt: 'DESC' } }); }
+  findForCustomer(customerId: string) { return this.orders.find({ where: { customerId }, relations: { items: { menuItem: true }, restaurant: true, voucher: true }, order: { createdAt: 'DESC' } }); }
 
   async create(customerId: string, dto: CreateOrderDto) {
     if (dto.items.length === 0) throw new BadRequestException('Order must contain at least one item');
     const orderItems: OrderItem[] = [];
     let total = 0;
+
     for (const requestItem of dto.items) {
       const menuItem = await this.menuItems.findOne(requestItem.menuItemId);
       if (menuItem.restaurantId !== dto.restaurantId) throw new BadRequestException('All items must belong to selected restaurant');
       const unitPrice = Number(menuItem.price);
       total += unitPrice * requestItem.quantity;
       orderItems.push(Object.assign(new OrderItem(), { menuItemId: menuItem.id, quantity: requestItem.quantity, unitPrice: unitPrice.toFixed(2) }));
+
+      const recipe = await this.ingredients.find({ where: { menuItemId: menuItem.id }, relations: { inventoryItem: true } });
+      for (const material of recipe) {
+        const stock = await this.inventory.findOne({ where: { id: material.inventoryItemId } });
+        if (!stock) throw new BadRequestException(`Missing inventory material: ${material.inventoryItemId}`);
+        const consume = Number(material.quantityPerUnit) * requestItem.quantity;
+        if (stock.quantity < consume) throw new BadRequestException(`Insufficient stock for ${stock.name}`);
+        stock.quantity = Number((stock.quantity - consume).toFixed(3));
+        await this.inventory.save(stock);
+      }
     }
 
     let voucher: Voucher | null = null;
@@ -60,17 +70,10 @@ export class OrdersService {
   async updateStatus(id: string, dto: UpdateOrderStatusDto) {
     const order = await this.orders.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== dto.status && !allowedTransitions[order.status].includes(dto.status)) {
-      throw new BadRequestException(`Invalid status transition from ${order.status} to ${dto.status}`);
-    }
+    if (order.status !== dto.status && !allowedTransitions[order.status].includes(dto.status)) throw new BadRequestException(`Invalid status transition from ${order.status} to ${dto.status}`);
     order.status = dto.status;
     return this.orders.save(order);
   }
 
-  async remove(id: string) {
-    const order = await this.orders.findOne({ where: { id } });
-    if (!order) throw new NotFoundException('Order not found');
-    await this.orders.delete(id);
-    return { deleted: true };
-  }
+  async remove(id: string) { const order = await this.orders.findOne({ where: { id } }); if (!order) throw new NotFoundException('Order not found'); await this.orders.delete(id); return { deleted: true }; }
 }
