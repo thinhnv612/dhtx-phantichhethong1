@@ -1,28 +1,91 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { InventoryItem } from '../inventory/inventory-item.entity';
+import { MenuItemIngredient } from '../menu-items/menu-item-ingredient.entity';
 import { OrderStatus, PaymentMethod, PaymentStatus } from '../common/enums';
 import { MenuItemsService } from '../menu-items/menu-items.service';
+import { Voucher } from '../vouchers/voucher.entity';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto';
 import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
 
+const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
+  [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+  [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
+  [OrderStatus.PREPARING]: [OrderStatus.DELIVERING, OrderStatus.CANCELLED],
+  [OrderStatus.DELIVERING]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  [OrderStatus.COMPLETED]: [],
+  [OrderStatus.CANCELLED]: [],
+};
+
 @Injectable()
 export class OrdersService {
-  constructor(@InjectRepository(Order) private readonly orders: Repository<Order>, private readonly menuItems: MenuItemsService) {}
-  findForCustomer(customerId: string) { return this.orders.find({ where: { customerId }, relations: { items: { menuItem: true }, restaurant: true }, order: { createdAt: 'DESC' } }); }
+  constructor(
+    @InjectRepository(Order) private readonly orders: Repository<Order>,
+    @InjectRepository(Voucher) private readonly vouchers: Repository<Voucher>,
+    @InjectRepository(MenuItemIngredient) private readonly ingredients: Repository<MenuItemIngredient>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly menuItems: MenuItemsService,
+  ) {}
+
+  findAll() { return this.orders.find({ relations: { items: { menuItem: true }, restaurant: true, customer: true, voucher: true }, order: { createdAt: 'DESC' } }); }
+  findForCustomer(customerId: string) { return this.orders.find({ where: { customerId }, relations: { items: { menuItem: true }, restaurant: true, voucher: true }, order: { createdAt: 'DESC' } }); }
+
   async create(customerId: string, dto: CreateOrderDto) {
     if (dto.items.length === 0) throw new BadRequestException('Order must contain at least one item');
     const orderItems: OrderItem[] = [];
+    const consumptionMap = new Map<string, number>();
     let total = 0;
+
     for (const requestItem of dto.items) {
       const menuItem = await this.menuItems.findOne(requestItem.menuItemId);
       if (menuItem.restaurantId !== dto.restaurantId) throw new BadRequestException('All items must belong to selected restaurant');
       const unitPrice = Number(menuItem.price);
       total += unitPrice * requestItem.quantity;
       orderItems.push(Object.assign(new OrderItem(), { menuItemId: menuItem.id, quantity: requestItem.quantity, unitPrice: unitPrice.toFixed(2) }));
+
+      const recipe = await this.ingredients.find({ where: { menuItemId: menuItem.id } });
+      for (const material of recipe) {
+        const consume = Number(material.quantityPerUnit) * requestItem.quantity;
+        consumptionMap.set(material.inventoryItemId, (consumptionMap.get(material.inventoryItemId) ?? 0) + consume);
+      }
     }
-    return this.orders.save(this.orders.create({ customerId, restaurantId: dto.restaurantId, status: OrderStatus.CONFIRMED, deliveryAddress: dto.deliveryAddress, customerPhone: dto.customerPhone, note: dto.note, totalAmount: total.toFixed(2), paymentMethod: dto.paymentMethod ?? PaymentMethod.MOMO, paymentStatus: PaymentStatus.PAID, paidAt: new Date(), paymentTransactionId: `PAY-${Date.now()}`, items: orderItems }));
+
+    let voucher: Voucher | null = null;
+    if (dto.voucherCode) {
+      voucher = await this.vouchers.findOne({ where: { code: dto.voucherCode, isActive: true } });
+      if (!voucher) throw new BadRequestException('Voucher is invalid or inactive');
+      if (voucher.restaurantId && voucher.restaurantId !== dto.restaurantId) throw new BadRequestException('Voucher does not belong to selected restaurant');
+      if (voucher.expiresAt && voucher.expiresAt.getTime() < Date.now()) throw new BadRequestException('Voucher expired');
+      total = Math.max(0, total - Number(voucher.discountAmount));
+    }
+
+    return this.dataSource.transaction(async manager => {
+      for (const [inventoryItemId, consume] of consumptionMap.entries()) {
+        const stock = await manager.findOne(InventoryItem, { where: { id: inventoryItemId } });
+        if (!stock) throw new BadRequestException(`Missing inventory material: ${inventoryItemId}`);
+        const result = await manager.createQueryBuilder()
+          .update(InventoryItem)
+          .set({ quantity: () => `quantity - ${consume}`, version: () => 'version + 1' })
+          .where('id = :id', { id: inventoryItemId })
+          .andWhere('version = :version', { version: stock.version })
+          .andWhere('quantity >= :consume', { consume })
+          .execute();
+        if (!result.affected) throw new ConflictException(`OUT_OF_STOCK:${stock.name}`);
+      }
+
+      return manager.save(Order, manager.create(Order, { customerId, restaurantId: dto.restaurantId, voucherId: voucher?.id, status: OrderStatus.CONFIRMED, deliveryAddress: dto.deliveryAddress, customerPhone: dto.customerPhone, note: dto.note, totalAmount: total.toFixed(2), paymentMethod: dto.paymentMethod ?? PaymentMethod.MOMO, paymentStatus: PaymentStatus.PAID, paidAt: new Date(), paymentTransactionId: `PAY-${Date.now()}`, items: orderItems }));
+    });
   }
-  async updateStatus(id: string, dto: UpdateOrderStatusDto) { const order = await this.orders.findOne({ where: { id } }); if (!order) throw new NotFoundException('Order not found'); order.status = dto.status; return this.orders.save(order); }
+
+  async updateStatus(id: string, dto: UpdateOrderStatusDto) {
+    const order = await this.orders.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== dto.status && !allowedTransitions[order.status].includes(dto.status)) throw new BadRequestException(`Invalid status transition from ${order.status} to ${dto.status}`);
+    order.status = dto.status;
+    return this.orders.save(order);
+  }
+
+  async remove(id: string) { const order = await this.orders.findOne({ where: { id } }); if (!order) throw new NotFoundException('Order not found'); await this.orders.delete(id); return { deleted: true }; }
 }

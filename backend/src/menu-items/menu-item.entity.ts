@@ -1,5 +1,6 @@
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Restaurant } from '../restaurants/restaurant.entity';
+import { MenuItemIngredient } from './menu-item-ingredient.entity';
 
 @Entity('menu_items')
 export class MenuItem {
@@ -12,6 +13,7 @@ export class MenuItem {
   @Column({ default: true }) isAvailable: boolean;
   @ManyToOne(() => Restaurant, restaurant => restaurant.menuItems, { onDelete: 'CASCADE' }) restaurant: Restaurant;
   @Column() restaurantId: string;
+  @OneToMany(() => MenuItemIngredient, ingredient => ingredient.menuItem) ingredients: MenuItemIngredient[];
   @CreateDateColumn() createdAt: Date;
   @UpdateDateColumn() updatedAt: Date;
 }
