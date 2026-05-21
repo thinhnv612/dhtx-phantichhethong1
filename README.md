@@ -1,103 +1,71 @@
-# Online Food Ordering System
+# Thuy Bui Snack Shop PoC
 
-Monorepo triển khai hệ thống bán đồ ăn online theo mô hình gồm PostgreSQL, NestJS backend, React frontend và Flutter mobile app.
+## 1) Yêu cầu môi trường
+- Node.js 20+
+- pnpm 10+
+- Docker + Docker Compose
 
-## Kiến trúc
+## 2) Chạy dự án trên localhost (thủ công)
 
-- `backend/`: REST API NestJS, TypeORM, PostgreSQL, JWT auth.
-- `frontend/`: React + Vite cho khách hàng đặt món trên web.
-- `mobile/`: Flutter app cho trải nghiệm mobile.
-- `docker-compose.yml`: Chỉ chạy PostgreSQL và pgAdmin để quản lý DB; Backend, Frontend và Mobile chạy local.
-
-## Chức năng chính
-
-- Đăng ký / đăng nhập người dùng.
-- Quản lý nhà hàng và món ăn theo danh mục.
-- Tìm kiếm nhà hàng, xem menu.
-- Tạo đơn hàng nhiều món.
-- Mock xác nhận thanh toán thành công cho đơn demo.
-- Theo dõi trạng thái đơn hàng.
-
-## Chạy Database và pgAdmin bằng Docker
-
+### Bước 1: Cài dependencies
 ```bash
-cp .env.example .env
+pnpm install
+```
+
+### Bước 2: Khởi động PostgreSQL + pgAdmin
+```bash
 docker compose up -d
 ```
 
-Dịch vụ Docker mặc định:
+- PostgreSQL:
+  - Host: `localhost`
+  - Port: `5432`
+  - User: `admin`
+  - Password: `admin123`
+  - Database: `snackshop`
+- pgAdmin: `http://localhost:5050`
+  - Email: `admin@thuybui.local`
+  - Password: `admin123`
 
-- PostgreSQL: `localhost:5432`
-- pgAdmin: <http://localhost:5050>
-- pgAdmin email: `admin@food.local`
-- pgAdmin password: `Admin@123456`
-
-Khi tạo server trong pgAdmin, dùng thông tin kết nối sau:
-
-- Host name/address: `postgres`
-- Port: `5432`
-- Maintenance database: `food_ordering`
-- Username: `food`
-- Password: `food_password`
-
-## Chạy Backend / Frontend / Mobile ở local
-
-### Backend
-
-Backend chạy local và kết nối PostgreSQL trong Docker qua `localhost:5432`.
-
+### Bước 3: Seed dữ liệu mẫu
 ```bash
-cd backend
-npm install
-DATABASE_URL=postgresql://food:food_password@localhost:5432/food_ordering \
-JWT_SECRET=change_me_in_production \
-DB_SYNCHRONIZE=true \
-npm run start:dev
+pnpm --filter backend seed
 ```
 
-API mặc định:
+Tài khoản mẫu:
+- admin / admin123
+- staff / staff123
 
-- REST API: <http://localhost:3000/api>
-- Swagger: <http://localhost:3000/docs>
+Voucher test concurrency:
+- `GIAM10K` (giới hạn 1 lần dùng)
 
-### Frontend
-
+### Bước 4: Chạy backend + frontend cùng lúc
 ```bash
-cd frontend
-npm install
-VITE_API_BASE_URL=http://localhost:3000/api npm run dev
+pnpm dev
 ```
 
-Web mặc định: <http://localhost:5173>
+Mặc định:
+- Backend API: `http://localhost:3000`
+- Frontend (Vite): xem URL hiển thị trong terminal (thường là `http://localhost:5173`)
 
-### Mobile
+## 3) Chạy từng app riêng (tuỳ chọn)
 
+### Chỉ chạy backend
 ```bash
-cd mobile
-flutter pub get
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api
+pnpm --filter backend dev
 ```
 
-## Tài khoản seed
+### Chỉ chạy frontend
+```bash
+pnpm --filter frontend dev
+```
 
-Khi `DB_SYNCHRONIZE=true`, API sẽ tự tạo dữ liệu demo qua `SeedService`.
+## 4) API chính
+- `POST /auth/login`
+- `POST /inventory/import`
+- `POST /orders`
 
-- Admin: `admin@food.local` / `Admin@123456`
-- Chủ quán: `owner@food.local` / `Owner@123456`
-- Customer: `customer@food.local` / `Customer@123456`
-- Customer 2: `customer2@food.local` / `Customer@123456`
-
-Dữ liệu demo bao phủ luồng thực tế từ danh mục món ăn đến đặt hàng và thanh toán:
-
-- 3 nhà hàng mẫu: Bếp Nhà Online, Phở & Bún Huế An Nhiên, Healthy Box Saigon.
-- 10 món ăn thuộc các danh mục `Cơm phần`, `Ăn vặt`, `Đồ uống`, `Món nước`, `Topping`, `Healthy`.
-- 3 đơn hàng mẫu ở các trạng thái `COMPLETED`, `CONFIRMED`, `PREPARING`.
-- Các đơn hàng đều có địa chỉ giao, số điện thoại, ghi chú, phương thức thanh toán và `paymentStatus=PAID` kèm mã giao dịch mock.
-
-## Ghi chú SOLID / Clean Code
-
-- Mỗi bounded context nằm trong một Nest module riêng.
-- Controller chỉ điều phối HTTP; nghiệp vụ nằm trong service.
-- DTO tách khỏi entity để tránh phụ thuộc tầng lưu trữ.
-- Frontend tách `api`, `hooks`, `components`, `pages`.
-- Flutter tách model, service, screen và widget.
+## 5) Dừng dịch vụ Docker
+```bash
+docker compose down
+```
