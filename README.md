@@ -24,7 +24,7 @@ docker compose up -d
   - Password: `admin123`
   - Database: `snackshop`
 - pgAdmin: `http://localhost:5050`
-  - Email: `admin@thuybui.local`
+  - Email: `admin@example.com`
   - Password: `admin123`
 
 ### Bước 3: Seed dữ liệu mẫu

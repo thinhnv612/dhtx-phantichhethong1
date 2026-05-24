@@ -7,5 +7,11 @@ import { Product } from '../entities/product.entity';
 import { Voucher } from '../entities/voucher.entity';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
-@Module({ imports: [TypeOrmModule.forFeature([Order, OrderDetail, Product, Voucher, InventoryTransaction])], controllers: [OrdersController], providers: [OrdersService] })
+import { OrdersSseService } from './orders-sse.service';
+@Module({ 
+  imports: [TypeOrmModule.forFeature([Order, OrderDetail, Product, Voucher, InventoryTransaction])], 
+  controllers: [OrdersController], 
+  providers: [OrdersService, OrdersSseService],
+  exports: [OrdersService, OrdersSseService]
+})
 export class OrdersModule {}

@@ -11,4 +11,5 @@ export class Order {
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PAID }) status: OrderStatus;
   @ManyToOne(() => Voucher, { nullable: true }) @JoinColumn({ name: 'voucher_id' }) voucher?: Voucher | null;
   @CreateDateColumn() created_at: Date;
+  details?: any;
 }
